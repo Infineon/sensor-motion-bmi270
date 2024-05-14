@@ -1,0 +1,7 @@
+docs
+$(SEARCH_BMI270_SensorAPI)/bmi270_context_examples
+$(SEARCH_BMI270_SensorAPI)/bmi270_examples
+$(SEARCH_BMI270_SensorAPI)/bmi270_legacy_examples
+$(SEARCH_BMI270_SensorAPI)/bmi270_max_fifo_examples
+$(SEARCH_BMI270_SensorAPI)/bmi270_maximum_fifo.c
+$(SEARCH_BMI270_SensorAPI)/bmi2_ois.c
