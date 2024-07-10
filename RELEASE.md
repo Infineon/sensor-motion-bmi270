@@ -2,6 +2,8 @@
 
 This library provides functions for interfacing with the BMI270 I2C 16-bit inertial measurement unit (IMU) with 3-axis accelerometer and 3-axis gyroscope used on the CY8CKIT-062S2-AI and SHIELD_XENSIV_A.
 
+> **NOTE:** This driver currently does not support ARM toolchain in Release build configuration. Some functionalities in BMI270_SensorAPI library may not work due to compiler optimization.
+
 ## What's Included?
 
 - APIs for initializing/de-initializing the driver
@@ -12,6 +14,10 @@ This library provides functions for interfacing with the BMI270 I2C 16-bit inert
 Refer to the [README.md](./README.md) and the [API Reference Guide](./api_reference.md) for a complete description of the sensor-motion-bmi270 library.
 
 ## What Changed?
+
+#### v0.5.1
+- Added support for interrupt configuration for BMI270 sensor
+- Added API reference manual
 
 #### v0.5.0
 - Initial release

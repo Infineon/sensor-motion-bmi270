@@ -28,12 +28,11 @@
 #include "cy_result.h"
 #include "cyhal.h"
 #include "cyhal_gpio.h"
+#include "cyhal_system.h"
 #if defined(__cplusplus)
 extern "C"
 {
 #endif
-
-typedef cyhal_gpio_callback_data_t  _mtb_bmi270_interrupt_pin_t;
 
 /**
  * Structure holding the IMU instance specific information.
@@ -45,8 +44,8 @@ typedef cyhal_gpio_callback_data_t  _mtb_bmi270_interrupt_pin_t;
 typedef struct
 {
     struct bmi2_dev           sensor;
-    _mtb_bmi270_interrupt_pin_t intpin1;
-    _mtb_bmi270_interrupt_pin_t intpin2;
+    cyhal_gpio_callback_data_t intpin1;
+    cyhal_gpio_callback_data_t intpin2;
 } mtb_bmi270_t;
 
 /** Structure holding the accelerometer and gyroscope data read from the device. */
@@ -151,6 +150,33 @@ cy_rslt_t mtb_bmi270_selftest(mtb_bmi270_t* dev);
 *  for this object but the init function will initialize its contents.
 *****************************************************************************/
 void mtb_bmi270_free_pin(mtb_bmi270_t* dev);
+
+/*****************************************************************************
+* Function Name: mtb_bmi270_config_int
+*****************************************************************************
+* Summary:
+* This configures the pin as an interrupt, and calls the BMI270 interrupt
+* configuration API with the application supplied settings structure.
+*
+* Parameters:
+* dev             Pointer to a BMI270 object. The caller must allocate the
+* memory for this object but the init function will initialize its contents.
+* intsettings     Pointer to a BMI270 interrupt settings structure.
+* pin             Which pin to configure as interrupt.
+* intr_priority   The priority for NVIC interrupt events.
+* event           The type of interrupt event
+* callback        The function to call when the specified event happens. Pass NULL to
+*                 unregister the handler.
+* callback_arg    Generic argument that will be provided to the callback when called, can
+*                 be NULL.
+*
+* Return:
+*  cy_rslt_t     CY_RSLT_SUCCESS if properly configured, else an error indicating what went wrong.
+*
+*****************************************************************************/
+cy_rslt_t mtb_bmi270_config_int(mtb_bmi270_t* dev, struct bmi2_int_pin_config* intsettings,
+                                cyhal_gpio_t pin, uint8_t intr_priority, cyhal_gpio_event_t event,
+                                cyhal_gpio_event_callback_t callback, void* callback_arg);
 
 #if defined(__cplusplus)
 }

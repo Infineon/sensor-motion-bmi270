@@ -57,9 +57,18 @@ static void _bmi2_delay_us(uint32_t us, void* intf_ptr);
 /******************************************************************************
 * _mtb_bmi270_pins_equal
 ******************************************************************************/
-static inline bool _mtb_bmi270_pins_equal(_mtb_bmi270_interrupt_pin_t ref_pin, cyhal_gpio_t pin)
+static inline bool _mtb_bmi270_pins_equal(cyhal_gpio_callback_data_t ref_pin, cyhal_gpio_t pin)
 {
     return (ref_pin.pin == pin);
+}
+
+
+/******************************************************************************
+* _mtb_bmi270_set_pin
+******************************************************************************/
+static inline bool _mtb_bmi270_set_pin(cyhal_gpio_callback_data_t* ref_pin, cyhal_gpio_t pin)
+{
+    return (ref_pin->pin = pin);
 }
 
 
@@ -86,6 +95,9 @@ cy_rslt_t mtb_bmi270_init_i2c(mtb_bmi270_t* dev, cyhal_i2c_t* i2c_instance,
     dev->sensor.read_write_len = _READ_WRITE_LEN;
     dev->sensor.config_file_ptr = NULL;
 
+    _mtb_bmi270_set_pin(&(dev->intpin1), NC);
+    _mtb_bmi270_set_pin(&(dev->intpin2), NC);
+
     bmi270_init(&(dev->sensor));
 
     rslt = bmi270_get_sensor_config(&config, 1, &(dev->sensor));
@@ -93,6 +105,41 @@ cy_rslt_t mtb_bmi270_init_i2c(mtb_bmi270_t* dev, cyhal_i2c_t* i2c_instance,
     return (BMI2_OK == rslt)
             ? CY_RSLT_SUCCESS
             : rslt;
+}
+
+
+/******************************************************************************
+* _mtb_bmi270_config_int
+******************************************************************************/
+static cy_rslt_t _mtb_bmi270_config_int(cyhal_gpio_callback_data_t* intpin, cyhal_gpio_t pin,
+                                        bool init, uint8_t intr_priority, cyhal_gpio_event_t event,
+                                        cyhal_gpio_event_callback_t callback, void* callback_arg)
+{
+    cy_rslt_t result = CY_RSLT_SUCCESS;
+
+    if (NULL == callback)
+    {
+        cyhal_gpio_free(pin);
+        _mtb_bmi270_set_pin(intpin, NC);
+    }
+    else
+    {
+        if (init)
+        {
+            result = cyhal_gpio_init(pin, CYHAL_GPIO_DIR_INPUT, CYHAL_GPIO_DRIVE_NONE, 0);
+        }
+        if (CY_RSLT_SUCCESS == result)
+        {
+            _mtb_bmi270_set_pin(intpin, pin);
+            intpin->callback = callback;
+            intpin->callback_arg = callback_arg;
+            cyhal_gpio_register_callback(pin, intpin);
+
+            cyhal_gpio_enable_event(pin, event, intr_priority, true);
+        }
+    }
+
+    return result;
 }
 
 
@@ -180,6 +227,53 @@ cy_rslt_t mtb_bmi270_selftest(mtb_bmi270_t* dev)
     return (BMI2_OK == rslt)
             ? CY_RSLT_SUCCESS
             : rslt;
+}
+
+
+/******************************************************************************
+* mtb_bmi270_config_int
+******************************************************************************/
+cy_rslt_t mtb_bmi270_config_int(mtb_bmi270_t* dev, struct bmi2_int_pin_config* intsettings,
+                                cyhal_gpio_t pin, uint8_t intr_priority, cyhal_gpio_event_t event,
+                                cyhal_gpio_event_callback_t callback, void* callback_arg)
+{
+    cy_rslt_t result = CY_RSLT_SUCCESS;
+
+    if (_mtb_bmi270_pins_equal(dev->intpin1, pin))
+    {
+        result = _mtb_bmi270_config_int(&(dev->intpin1), pin, false, intr_priority, event, callback,
+                                        callback_arg);
+    }
+    else if (_mtb_bmi270_pins_equal(dev->intpin2, pin))
+    {
+        result = _mtb_bmi270_config_int(&(dev->intpin2), pin, false, intr_priority, event, callback,
+                                        callback_arg);
+    }
+    else if (_mtb_bmi270_pins_equal(dev->intpin1, NC))
+    {
+        result = _mtb_bmi270_config_int(&(dev->intpin1), pin, true, intr_priority, event, callback,
+                                        callback_arg);
+    }
+    else if (_mtb_bmi270_pins_equal(dev->intpin2, NC))
+    {
+        result = _mtb_bmi270_config_int(&(dev->intpin2), pin, true, intr_priority, event, callback,
+                                        callback_arg);
+    }
+    else
+    {
+        CY_ASSERT(CY_RSLT_SUCCESS == result);
+    }
+
+    if (result == CY_RSLT_SUCCESS)
+    {
+        int8_t status = bmi2_set_int_pin_config(intsettings, &(dev->sensor));
+        if (status != BMI2_OK)
+        {
+            CY_ASSERT(CY_RSLT_SUCCESS == status);
+        }
+    }
+
+    return result;
 }
 
 
