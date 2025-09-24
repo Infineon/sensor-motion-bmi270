@@ -1,27 +1,27 @@
-/******************************************************************************
- * \file mtb_bmi270.c
- *
- * \brief
- *     This file contains the functions for interacting with the
- *     BMI270 motion sensor.
- *
- ********************************************************************************
- * \copyright
- * Copyright 2024 Cypress Semiconductor Corporation
- * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *******************************************************************************/
+/*******************************************************************************
+* \file mtb_bmi270.c
+*
+* \brief
+*     This file contains the functions for interacting with the
+*     BMI270 motion sensor.
+*
+********************************************************************************
+* \copyright
+* Copyright 2024-2025, Cypress Semiconductor Corporation (an Infineon company)
+* SPDX-License-Identifier: Apache-2.0
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
 
 #include "mtb_bmi270.h"
 
@@ -30,52 +30,58 @@ extern "C"
 {
 #endif
 
-/******************************************************************************
+/*******************************************************************************
 * Macros
-******************************************************************************/
+*******************************************************************************/
 #define _I2C_TIMEOUT_MS            (1U)
 #define _READ_WRITE_LEN            (46U)
-#define _SOFT_RESET_DELAY_US       300
+#define _SOFT_RESET_DELAY_US       (300U)
 
-/******************************************************************************
+/*******************************************************************************
 * Global variables
-******************************************************************************/
-static cyhal_i2c_t* _bmi270_i2c = NULL;
+*******************************************************************************/
+static mtb_hal_i2c_t* _bmi270_i2c = NULL;
 static uint8_t _dev_addr;
 
-/*****************************************************************************
+/*******************************************************************************
 * Local function Prototypes
-*****************************************************************************/
-static BMI2_INTF_RETURN_TYPE _bmi2_i2c_read(uint8_t reg_addr, uint8_t* reg_data,
-                                            uint32_t len, void* intf_ptr);
+*******************************************************************************/
+static BMI2_INTF_RETURN_TYPE _bmi2_i2c_read(uint8_t reg_addr,
+                                            uint8_t* reg_data,
+                                            uint32_t len,
+                                            void* intf_ptr);
 
-static BMI2_INTF_RETURN_TYPE _bmi2_i2c_write(uint8_t reg_addr, const uint8_t* reg_data,
-                                             uint32_t len, void* intf_ptr);
+static BMI2_INTF_RETURN_TYPE _bmi2_i2c_write(uint8_t reg_addr,
+                                             const uint8_t* reg_data,
+                                             uint32_t len,
+                                             void* intf_ptr);
 
 static void _bmi2_delay_us(uint32_t us, void* intf_ptr);
 
-/******************************************************************************
-* _mtb_bmi270_pins_equal
-******************************************************************************/
-static inline bool _mtb_bmi270_pins_equal(cyhal_gpio_callback_data_t ref_pin, cyhal_gpio_t pin)
-{
-    return (ref_pin.pin == pin);
-}
-
-
-/******************************************************************************
-* _mtb_bmi270_set_pin
-******************************************************************************/
-static inline bool _mtb_bmi270_set_pin(cyhal_gpio_callback_data_t* ref_pin, cyhal_gpio_t pin)
-{
-    return (ref_pin->pin = pin);
-}
-
-
-/******************************************************************************
-* mtb_bmi270_init_i2c
-******************************************************************************/
-cy_rslt_t mtb_bmi270_init_i2c(mtb_bmi270_t* dev, cyhal_i2c_t* i2c_instance,
+/*******************************************************************************
+* Function name: mtb_bmi270_init_i2c
+********************************************************************************
+* Summary:
+*
+* This function initializes the I2C instance, configures the BMI270, and sets
+* platform-dependent function pointers.
+*
+* Parameters:
+*
+*  dev              Pointer to a BMI270 object. The caller must allocate the
+*                   memory for this object but the init function will initialize
+*                   its contents.
+*  i2c_instance     I2C instance to use for communicating with the BMI270 sensor
+*  dev_addr         BMI270 I2C address, set by hardware implementation
+*
+* Return:
+*
+*  cy_rslt_t        CY_RSLT_SUCCESS if properly initialized, else an error
+*                   indicating what went wrong.
+*
+*******************************************************************************/
+cy_rslt_t mtb_bmi270_init_i2c(mtb_bmi270_t* dev,
+                              mtb_hal_i2c_t* i2c_instance,
                               mtb_bmi270_address_t address)
 {
     cy_rslt_t rslt;
@@ -95,57 +101,153 @@ cy_rslt_t mtb_bmi270_init_i2c(mtb_bmi270_t* dev, cyhal_i2c_t* i2c_instance,
     dev->sensor.read_write_len = _READ_WRITE_LEN;
     dev->sensor.config_file_ptr = NULL;
 
-    _mtb_bmi270_set_pin(&(dev->intpin1), NC);
-    _mtb_bmi270_set_pin(&(dev->intpin2), NC);
-
     bmi270_init(&(dev->sensor));
 
     rslt = bmi270_get_sensor_config(&config, 1, &(dev->sensor));
 
-    return (BMI2_OK == rslt)
-            ? CY_RSLT_SUCCESS
-            : rslt;
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
 }
 
 
-/******************************************************************************
-* _mtb_bmi270_config_int
-******************************************************************************/
-static cy_rslt_t _mtb_bmi270_config_int(cyhal_gpio_callback_data_t* intpin, cyhal_gpio_t pin,
-                                        bool init, uint8_t intr_priority, cyhal_gpio_event_t event,
-                                        cyhal_gpio_event_callback_t callback, void* callback_arg)
+/*******************************************************************************
+* Function name: mtb_bmi270_get_sensor_config
+********************************************************************************
+* Summary:
+*
+* This API gets the sensor/feature configuration.
+* Parameters:
+*  config           Pointer to mtb_bmi270_sens_config_t structure instance
+*  sensor_count     Number of sensors selected
+*  dev              Pointer to a BMI270 object. The caller must allocate the
+*                   memory for this object but the init function will initialize
+*                   its contents.
+*
+* Return:
+*
+*  cy_rslt_t        CY_RSLT_SUCCESS if properly initialized, else an error
+*                   indicating what went wrong.
+*
+*******************************************************************************/
+cy_rslt_t mtb_bmi270_get_sensor_config(mtb_bmi270_sens_config_t* config,
+                                       uint8_t sensor_count, mtb_bmi270_t* dev)
 {
-    cy_rslt_t result = CY_RSLT_SUCCESS;
+    cy_rslt_t rslt;
+    rslt = bmi2_get_sensor_config(&(config->sensor_config), sensor_count,
+                                  &(dev->sensor));
 
-    if (NULL == callback)
-    {
-        cyhal_gpio_free(pin);
-        _mtb_bmi270_set_pin(intpin, NC);
-    }
-    else
-    {
-        if (init)
-        {
-            result = cyhal_gpio_init(pin, CYHAL_GPIO_DIR_INPUT, CYHAL_GPIO_DRIVE_NONE, 0);
-        }
-        if (CY_RSLT_SUCCESS == result)
-        {
-            _mtb_bmi270_set_pin(intpin, pin);
-            intpin->callback = callback;
-            intpin->callback_arg = callback_arg;
-            cyhal_gpio_register_callback(pin, intpin);
-
-            cyhal_gpio_enable_event(pin, event, intr_priority, true);
-        }
-    }
-
-    return result;
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
 }
 
 
-/******************************************************************************
-* mtb_bmi270_config_default
-******************************************************************************/
+/*******************************************************************************
+* Function name: mtb_bmi270_set_sensor_config
+********************************************************************************
+* Summary:
+*
+* This API sets the sensor/feature configuration.
+* Parameters:
+*  config           Pointer to mtb_bmi270_sens_config_t structure instance
+*  sensor_count     Number of sensors selected
+*  dev              Pointer to a BMI270 object. The caller must allocate the
+*                   memory for this object but the init function will initialize
+*                   its contents.
+*
+* Return:
+*
+*  cy_rslt_t        CY_RSLT_SUCCESS if properly initialized, else an error
+*                   indicating what went wrong.
+*
+*******************************************************************************/
+cy_rslt_t mtb_bmi270_set_sensor_config(mtb_bmi270_sens_config_t* config,
+                                       uint8_t sensor_count, mtb_bmi270_t* dev)
+{
+    cy_rslt_t rslt;
+    rslt = bmi2_set_sensor_config(&(config->sensor_config), sensor_count,
+                                  &(dev->sensor));
+
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
+}
+
+
+/*******************************************************************************
+* Function name: mtb_bmi270_sensor_enable
+********************************************************************************
+* Summary:
+*
+* This API selects the sensors/features to be enabled
+* Parameters:
+*  sensor_list      Pointer to select the sensor/feature
+*  sensor_count     Number of sensors selected
+*  dev              Pointer to a BMI270 object. The caller must allocate the
+*                   memory for this object but the init function will initialize
+*                   its contents.
+*
+* Return:
+*
+*  cy_rslt_t        CY_RSLT_SUCCESS if properly initialized, else an error
+*                   indicating what went wrong.
+*
+*******************************************************************************/
+cy_rslt_t mtb_bmi270_sensor_enable(const uint8_t* sensor_list,
+                                   uint8_t sensor_count,
+                                   mtb_bmi270_t* dev)
+{
+    cy_rslt_t rslt;
+    rslt = bmi2_sensor_enable(sensor_list, sensor_count, &(dev->sensor));
+
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
+}
+
+
+/*******************************************************************************
+* Function name: mtb_bmi270_sensor_disable
+********************************************************************************
+* Summary:
+*
+* This API selects the sensors/features to be disabled
+* Parameters:
+*  sensor_list      Pointer to select the sensor/feature
+*  sensor_count     Number of sensors selected
+*  dev              Pointer to a BMI270 object. The caller must allocate the
+*                   memory for this object but the init function will initialize
+*                   its contents.
+*
+* Return:
+*
+*  cy_rslt_t        CY_RSLT_SUCCESS if properly initialized, else an error
+*                   indicating what went wrong.
+*
+*******************************************************************************/
+cy_rslt_t mtb_bmi270_sensor_disable(const uint8_t* sensor_list,
+                                    uint8_t sensor_count,
+                                    mtb_bmi270_t* dev)
+{
+    cy_rslt_t rslt;
+    rslt = bmi2_sensor_disable(sensor_list, sensor_count, &(dev->sensor));
+
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
+}
+
+
+/*******************************************************************************
+* Function name: mtb_bmi270_config_default
+********************************************************************************
+* Summary:
+*
+*   This function configures the motion sensor to a default mode with both
+*   accelerometer and gyroscope enabled with a 100Hz output data rate.
+*
+* Parameters:
+*
+*  dev    Pointer to a BMI270 object. The caller must allocate the memory
+*         for this object but the init function will initialize its contents.
+*
+* Return:
+*
+*  cy_rslt_t    CY_RSLT_SUCCESS if properly configured, else an error indicating
+*               what went wrong.
+*
+*******************************************************************************/
 cy_rslt_t mtb_bmi270_config_default(mtb_bmi270_t* dev)
 {
     cy_rslt_t rslt;
@@ -192,189 +294,238 @@ cy_rslt_t mtb_bmi270_config_default(mtb_bmi270_t* dev)
     }
 
     rslt = bmi2_sensor_enable(sens_list, 2, &(dev->sensor));
-    return (BMI2_OK == rslt)
-            ? CY_RSLT_SUCCESS
-            : rslt;
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
 }
 
 
-/******************************************************************************
-* mtb_bmi270_read
-******************************************************************************/
+/*******************************************************************************
+* Function name: mtb_bmi270_read
+********************************************************************************
+* Summary:
+*
+* This function gets the sensor data for accelerometer and gyroscope.
+*
+* Parameters:
+*
+*  dev    Pointer to a BMI270 object. The caller must allocate the
+*         memory for this object but the init function will initialize
+*         its contents.
+*  data   The accelerometer & gyroscope data read from the motion sensor.
+*
+* Return:
+*
+*  cy_rslt_t    CY_RSLT_SUCCESS if properly read, else an error indicating
+*               what went wrong.
+*
+*******************************************************************************/
 cy_rslt_t mtb_bmi270_read(mtb_bmi270_t* dev, mtb_bmi270_data_t* data)
 {
     cy_rslt_t rslt;
     rslt = bmi2_get_sensor_data(&(data->sensor_data), &(dev->sensor));
-    return (BMI2_OK == rslt)
-            ? CY_RSLT_SUCCESS
-            : rslt;
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
 }
 
 
-/******************************************************************************
-* mtb_bmi270_selftest
-******************************************************************************/
+/*******************************************************************************
+* Function name: mtb_bmi270_read_temp
+********************************************************************************
+* Summary:
+*
+*    Gets the raw temperature data from the sensor which can be further
+*    converted into degree celsius
+*
+* Parameters:
+*
+*  dev          Pointer to a BMI270 object. The caller must allocate the
+*               memory for this object but the init function will initialize
+*               its contents.
+*  temp_data    The raw temperature data read from the sensor
+*
+* Return:
+*
+*  cy_rslt_t    CY_RSLT_SUCCESS if properly read, else an error indicating
+*               what went wrong.
+*
+*******************************************************************************/
+cy_rslt_t mtb_bmi270_read_temp(mtb_bmi270_t* dev, uint16_t* temp_data)
+{
+    cy_rslt_t rslt;
+    rslt = bmi2_get_temperature_data(temp_data, &(dev->sensor));
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
+}
+
+
+/*******************************************************************************
+* Function name: mtb_bmi270_selftest
+********************************************************************************
+* Summary:
+*
+* Performs both accelerometer and gyro self tests.
+*
+* Note: These tests cause a soft reset of the device and device should be
+*       reconfigured after a test.
+*
+* Parameters:
+*
+*  dev    Pointer to a BMI270 object. The caller must allocate the
+*         memory for this object but the init function will initialize
+*         its contents.
+*
+* Return:
+*
+*  cy_rslt_t    CY_RSLT_SUCCESS if test passed, else an error indicating
+*               what went wrong.
+*
+*******************************************************************************/
 cy_rslt_t mtb_bmi270_selftest(mtb_bmi270_t* dev)
 {
     cy_rslt_t rslt = bmi2_perform_accel_self_test(&(dev->sensor));
-    cyhal_system_delay_us(_SOFT_RESET_DELAY_US); //per datasheet, delay needed after reset to reboot
+
+    /*per datasheet, delay needed after reset to reboot*/
+    mtb_hal_system_delay_us(_SOFT_RESET_DELAY_US);
 
     if (BMI2_OK == rslt)
     {
         rslt =  bmi2_do_gyro_st(&(dev->sensor));
-        cyhal_system_delay_us(_SOFT_RESET_DELAY_US); // delay needed after another reset
+
+        /*delay needed after another reset*/
+        mtb_hal_system_delay_us(_SOFT_RESET_DELAY_US);
     }
-    return (BMI2_OK == rslt)
-            ? CY_RSLT_SUCCESS
-            : rslt;
+    return (BMI2_OK == rslt) ? CY_RSLT_SUCCESS : rslt;
 }
 
 
-/******************************************************************************
-* mtb_bmi270_config_int
-******************************************************************************/
-cy_rslt_t mtb_bmi270_config_int(mtb_bmi270_t* dev, struct bmi2_int_pin_config* intsettings,
-                                cyhal_gpio_t pin, uint8_t intr_priority, cyhal_gpio_event_t event,
-                                cyhal_gpio_event_callback_t callback, void* callback_arg)
-{
-    cy_rslt_t result = CY_RSLT_SUCCESS;
-
-    if (_mtb_bmi270_pins_equal(dev->intpin1, pin))
-    {
-        result = _mtb_bmi270_config_int(&(dev->intpin1), pin, false, intr_priority, event, callback,
-                                        callback_arg);
-    }
-    else if (_mtb_bmi270_pins_equal(dev->intpin2, pin))
-    {
-        result = _mtb_bmi270_config_int(&(dev->intpin2), pin, false, intr_priority, event, callback,
-                                        callback_arg);
-    }
-    else if (_mtb_bmi270_pins_equal(dev->intpin1, NC))
-    {
-        result = _mtb_bmi270_config_int(&(dev->intpin1), pin, true, intr_priority, event, callback,
-                                        callback_arg);
-    }
-    else if (_mtb_bmi270_pins_equal(dev->intpin2, NC))
-    {
-        result = _mtb_bmi270_config_int(&(dev->intpin2), pin, true, intr_priority, event, callback,
-                                        callback_arg);
-    }
-    else
-    {
-        CY_ASSERT(CY_RSLT_SUCCESS == result);
-    }
-
-    if (result == CY_RSLT_SUCCESS)
-    {
-        int8_t status = bmi2_set_int_pin_config(intsettings, &(dev->sensor));
-        if (status != BMI2_OK)
-        {
-            CY_ASSERT(CY_RSLT_SUCCESS == status);
-        }
-    }
-
-    return result;
-}
-
-
-/******************************************************************************
-* mtb_bmi270_free_pin
-******************************************************************************/
-void mtb_bmi270_free_pin(mtb_bmi270_t* dev)
-{
-    if (!_mtb_bmi270_pins_equal(dev->intpin1, NC))
-    {
-        cyhal_gpio_free((dev->intpin1).pin);
-    }
-
-    if (!_mtb_bmi270_pins_equal(dev->intpin2, NC))
-    {
-        cyhal_gpio_free((dev->intpin2).pin);
-    }
-
-    _bmi270_i2c = NULL;
-}
-
-
-/*****************************************************************************
+/*******************************************************************************
 * Function name: _bmi2_i2c_read
-*****************************************************************************
+********************************************************************************
 * Summary:
+*
 * This internal function reads I2C function map to host MCU
 *
 * Parameters:
+*
 *  reg_addr    8bit register address of the sensor
 *  reg_data    Data from the specified address
 *  len         Length of the reg_data array
 *  intf_ptr    Void pointer that can enable the linking of descriptors for
-*  interface related callbacks
+*              interface related callbacks
 *
 * Return:
-*  int8_t     Status of execution
 *
-*****************************************************************************/
-static BMI2_INTF_RETURN_TYPE _bmi2_i2c_read(uint8_t reg_addr, uint8_t* reg_data,
-                                            uint32_t len, void* intf_ptr)
+*  BMI2_INTF_RETURN_TYPE     Status of execution
+*
+*******************************************************************************/
+static BMI2_INTF_RETURN_TYPE _bmi2_i2c_read(uint8_t reg_addr,
+                                            uint8_t* reg_data,
+                                            uint32_t len,
+                                            void* intf_ptr)
 {
     uint8_t device_addr = *(uint8_t*)intf_ptr;
 
-    return (BMI2_INTF_RETURN_TYPE)cyhal_i2c_master_mem_read(_bmi270_i2c, device_addr,
-                                                            reg_addr, 1,
-                                                            reg_data, (uint16_t)len,
-                                                            _I2C_TIMEOUT_MS);
+    cy_rslt_t status = mtb_hal_i2c_controller_write(_bmi270_i2c,
+                                                    device_addr,
+                                                    &reg_addr,
+                                                    1,
+                                                    _I2C_TIMEOUT_MS,
+                                                    false);
+    if (CY_RSLT_SUCCESS == status)
+    {
+        status = mtb_hal_i2c_controller_read(_bmi270_i2c,
+                                             device_addr,
+                                             reg_data,
+                                             len,
+                                             _I2C_TIMEOUT_MS,
+                                             true);
+    }
+    return (BMI2_INTF_RETURN_TYPE)status;
 }
 
 
-/*****************************************************************************
+/*******************************************************************************
 * Function name: _bmi2_i2c_write
-*****************************************************************************
+********************************************************************************
 * Summary:
+*
 * This internal function writes I2C function map to host MCU
 *
 * Parameters:
+*
 *  reg_addr    8bit register address of the sensor
 *  reg_data    Data from the specified address
 *  len         Length of the reg_data array
 *  intf_ptr    Void pointer that can enable the linking of descriptors for
-*  interface related callbacks
+*              interface related callbacks
 *
 * Return:
-*  int8_t     Status of execution
 *
-*****************************************************************************/
-static BMI2_INTF_RETURN_TYPE _bmi2_i2c_write(uint8_t reg_addr, const uint8_t* reg_data,
-                                             uint32_t len, void* intf_ptr)
+*  BMI2_INTF_RETURN_TYPE     Status of execution
+*
+*******************************************************************************/
+static BMI2_INTF_RETURN_TYPE _bmi2_i2c_write(uint8_t reg_addr,
+                                             const uint8_t* reg_data,
+                                             uint32_t len,
+                                             void* intf_ptr)
 {
     uint8_t device_addr = *(uint8_t*)intf_ptr;
 
-    return (BMI2_INTF_RETURN_TYPE)cyhal_i2c_master_mem_write(_bmi270_i2c, device_addr,
-                                                             reg_addr, 1,
-                                                             reg_data,
-                                                             (uint16_t)len,
-                                                             _I2C_TIMEOUT_MS);
+    cy_rslt_t status = mtb_hal_i2c_controller_write(_bmi270_i2c,
+                                                    device_addr,
+                                                    &reg_addr,
+                                                    1,
+                                                    _I2C_TIMEOUT_MS,
+                                                    false);
+
+    if (CY_RSLT_SUCCESS == status)
+    {
+        while (len > 0)
+        {
+            status = Cy_SCB_I2C_MasterWriteByte(_bmi270_i2c->base,
+                                                *reg_data,
+                                                _I2C_TIMEOUT_MS,
+                                                _bmi270_i2c->context);
+
+            if (CY_SCB_I2C_SUCCESS != status)
+            {
+                break;
+            }
+            --len;
+            ++reg_data;
+        }
+        /* SCB in I2C mode is very time sensitive. In practice we have to */
+        /* request STOP after each block, otherwise it may break the */
+        /* transmission */
+        Cy_SCB_I2C_MasterSendStop(_bmi270_i2c->base,
+                                  _I2C_TIMEOUT_MS,
+                                  _bmi270_i2c->context);
+    }
+
+    return (BMI2_INTF_RETURN_TYPE)status;
 }
 
 
-/*****************************************************************************
+/*******************************************************************************
 * Function name: _bmi2_delay_us
-*****************************************************************************
+********************************************************************************
 * Summary:
+*
 * This internal function maps delay function to host MCU
 *
 * Parameters:
-*  us    The time period in microseconds
+*
+*  us        The time period in microseconds
 *  intf_ptr  Void pointer that can enable the linking of descriptors for
-*  interface related callbacks
+*            interface related callbacks
 *
 * Return:
+*
 *  void
 *
-*****************************************************************************/
+*******************************************************************************/
 static void _bmi2_delay_us(uint32_t us, void* intf_ptr)
 {
     (void)intf_ptr;
 
-    cyhal_system_delay_us(us);
+    mtb_hal_system_delay_us(us);
 }
 
 
